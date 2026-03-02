@@ -209,7 +209,7 @@ with st.sidebar:
     st.subheader("🏎 Performance")
     max_rpm = st.number_input("Max RPM Limit", value=3000)
 
-tab1, tab2, tab3, tab4 = st.tabs(["Turning & Facing", "Step Turning", "Threading", "Advanced Options"])
+tab1, tab2, tab3, tab4 = st.tabs(["Turning & Facing", "Step Turning (under development)", "Threading (under development)", "Advanced Options (under development)"])
 
 with tab1:
     st.subheader("🧾 Workpiece Dimensions")
@@ -237,17 +237,30 @@ with tab1:
 
     if st.button("🚀 GENERATE INDUSTRIAL G-CODE"):
         res = get_machine_header(machine_type, "0101", speed, max_rpm)
-        res.append("( OPERATION: MULTI-PASS TURNING )")
         
-        # Proper Multi-Pass Logic
-        current_dia = i_dia
-        while current_dia > f_dia:
-            current_dia -= doc
-            if current_dia < f_dia: current_dia = f_dia
-            res.append(f"G00 X{round(current_dia, 3)} Z2.0")
-            res.append(f"G01 Z-{round(f_len, 3)} F{feed}")
-            res.append(f"G00 X{round(i_dia + 2, 3)}") # Safely Retract
-            res.append(f"G00 Z2.0")
+        # Proper Multi-Pass Logic - Facing
+        if i_len > f_len:
+            res.append("( --- FACING MULTI-PASS --- )")
+            current_z = i_len - f_len
+            while current_z > 0:
+                current_z -= doc
+                if current_z < 0: current_z = 0
+                res.append(f"G00 X{round(i_dia + 2, 3)} Z{round(current_z, 3)}")
+                res.append(f"G01 X-1.0 F{feed}")
+                res.append(f"G00 Z{round(current_z + 2, 3)}")
+                res.append(f"G00 X{round(i_dia + 2, 3)}")
+                
+        # Proper Multi-Pass Logic - Turning
+        if i_dia > f_dia:
+            res.append("( --- TURNING MULTI-PASS --- )")
+            current_dia = i_dia
+            while current_dia > f_dia:
+                current_dia -= doc
+                if current_dia < f_dia: current_dia = f_dia
+                res.append(f"G00 X{round(current_dia, 3)} Z2.0")
+                res.append(f"G01 Z-{round(f_len, 3)} F{feed}")
+                res.append(f"G00 X{round(current_dia + 2, 3)}") # Safely Retract X first
+                res.append(f"G00 Z2.0")
             
         res.extend(get_machine_footer(machine_type))
         st.code("\n".join(res))
@@ -279,12 +292,26 @@ with tab2:
     if st.button("🚀 GENERATE STEP G-CODE"):
         res = get_machine_header(machine_type, "0202", mat_data["speed"], max_rpm)
         res.append("( OPERATION: MULTI-STEP TURNING )")
-        z_pos = 0
-        for i, (dia, length) in enumerate(steps_data):
-            res.append(f"( STEP {i+1}: DIA {dia} LEN {length} )")
-            res.append(f"G00 X{dia} Z{z_pos}")
-            res.append(f"G01 Z-{z_pos + length} F{mat_data['feed']}")
-            z_pos += length
+        
+        doc = mat_data["doc"]
+        feed = mat_data["feed"]
+        current_z = 0.0
+        
+        for i, (step_dia, step_len) in enumerate(steps_data):
+            res.append(f"( --- STEP {i+1}: DIA {step_dia} LEN {step_len} --- )")
+            target_z = current_z - step_len
+            active_dia = s_initial_dia
+            
+            while active_dia > step_dia:
+                active_dia -= doc
+                if active_dia < step_dia: active_dia = step_dia
+                res.append(f"G00 X{round(active_dia, 3)} Z{round(current_z + 2.0, 3)}") # safe approach
+                res.append(f"G00 Z{round(current_z, 3)}") # move to pass start Z
+                res.append(f"G01 Z{round(target_z, 3)} F{feed}") # cut
+                res.append(f"G00 X{round(active_dia + 2.0, 3)}") # retract X
+            
+            current_z = target_z # update Z for next step
+            
         res.extend(get_machine_footer(machine_type))
         st.code("\n".join(res))
         st.download_button("📥 DOWNLOAD STEP NC", "\n".join(res), file_name="step_turning.nc")
