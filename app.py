@@ -11,25 +11,25 @@ def get_machine_header(machine_type, tool, spindle, max_rpm=3000):
     if machine_type == "Fanuc / Haas":
         return [
             "O1000 (PROGRAM NAME)",
-            "G21 G18 G40 G80 G99 (SAFETY LINE)",
+            "G21 G18 G40 (METRIC, XZ-PLANE, NO COMP)",
             f"T{tool} (TOOL SELECTION)",
             f"G50 S{max_rpm} (MAX SPINDLE SPEED)",
-            f"G97 S{spindle} M03 (CONST SPINDLE START)"
+            f"G97 S{spindle} M03 M08 (SPINDLE ON, COOLANT ON)"
         ]
     elif machine_type == "Siemens":
         return [
             "; PROGRAM FOR SIEMENS 840D",
-            "G71 G90 G95 (METRIC, ABSOLUTE, FEED/REV)",
+            "G71 G90 (METRIC, ABSOLUTE)",
             f"LIMS={max_rpm} (LIMIT SPINDLE SPEED)",
             f"T=\"TOOL_{tool[:2]}\" D1",
-            f"G97 S{spindle} M3"
+            f"G97 S{spindle} M3 M8 (SPINDLE ON, COOLANT ON)"
         ]
     else: # LinuxCNC
         return [
             "( PROGRAM FOR LINUXCNC )",
-            "G21 G18 G40 G49 G80 G90 G94",
+            "G21 G18 G40 G49 G90 (METRIC, XZ-PLANE)",
             f"T{tool} M6",
-            f"G96 S{spindle} M3 (CSS MODE)"
+            f"G96 S{spindle} M3 M8 (CSS MODE, COOLANT ON)"
         ]
 
 def get_machine_footer(machine_type):
@@ -173,13 +173,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Material Settings
+# Material Settings (Vc is Cutting Speed in m/min)
 MATERIALS = {
-    "Aluminum (6061)": {"speed": 2500, "feed": 0.25, "doc": 1.5},
-    "Mild Steel (1018)": {"speed": 1200, "feed": 0.15, "doc": 1.0},
-    "Stainless Steel (304)": {"speed": 800, "feed": 0.10, "doc": 0.5},
-    "Brass": {"speed": 2200, "feed": 0.30, "doc": 2.0},
-    "Custom": {"speed": 1200, "feed": 0.2, "doc": 1.0}
+    "Aluminum (6061)": {"vc": 300, "feed": 0.25, "doc": 1.5},
+    "Mild Steel (1018)": {"vc": 120, "feed": 0.15, "doc": 1.0},
+    "Stainless Steel (304)": {"vc": 60, "feed": 0.10, "doc": 0.5},
+    "Brass": {"vc": 180, "feed": 0.30, "doc": 2.0},
+    "Custom": {"vc": 100, "feed": 0.2, "doc": 1.0}
 }
 
 st.title("⚙️ CNC G-CODE GENERATOR")
@@ -202,7 +202,18 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("💎 Stock Selection")
-    material = st.selectbox("Stock Material", list(MATERIALS.keys()), key='material_select')
+    
+    def update_mat_params():
+        mat = st.session_state.material_select
+        dia = st.session_state.get('i_dia_input', st.session_state.init_dia)
+        st.session_state.doc_input = MATERIALS[mat]["doc"]
+        st.session_state.feed_input = MATERIALS[mat]["feed"]
+        if dia > 0:
+            st.session_state.speed_input = int((MATERIALS[mat]["vc"] * 1000) / (np.pi * dia))
+        else:
+            st.session_state.speed_input = 0
+
+    material = st.selectbox("Stock Material", list(MATERIALS.keys()), key='material_select', on_change=update_mat_params)
     mat_data = MATERIALS[material]
     
     st.markdown("---")
@@ -215,7 +226,13 @@ with tab1:
     st.subheader("🧾 Workpiece Dimensions")
     c1, c2 = st.columns(2)
     with c1:
-        i_dia = st.number_input("Initial Diameter (mm)", value=st.session_state.init_dia, key='i_dia_input')
+        def update_rpm_from_dia():
+            mat = st.session_state.material_select
+            dia = st.session_state.i_dia_input
+            if dia > 0:
+                st.session_state.speed_input = int((MATERIALS[mat]["vc"] * 1000) / (np.pi * dia))
+                
+        i_dia = st.number_input("Initial Diameter (mm)", value=st.session_state.init_dia, key='i_dia_input', on_change=update_rpm_from_dia)
         f_dia = st.number_input("Final Diameter (mm)", value=st.session_state.fin_dia, key='f_dia_input')
     with c2:
         i_len = st.number_input("Initial Length (mm)", value=st.session_state.init_len, key='i_len_input')
@@ -231,9 +248,19 @@ with tab1:
     st.markdown("---")
     st.subheader("⚙️ Cutting Parameters")
     c3, c4, c5 = st.columns(3)
-    with c3: doc = st.number_input("Depth of Cut", value=mat_data["doc"], key="doc_input")
-    with c4: speed = st.number_input("Spindle RPM", value=mat_data["speed"], key="speed_input")
-    with c5: feed = st.number_input("Feed (mm/rev)", value=mat_data["feed"], key="feed_input")
+    
+    if "doc_input" not in st.session_state:
+        st.session_state.doc_input = mat_data["doc"]
+    with c3: doc = st.number_input("Depth of Cut", key="doc_input")
+    
+    if "speed_input" not in st.session_state:
+        default_rpm = int((mat_data["vc"] * 1000) / (np.pi * st.session_state.get('i_dia_input', st.session_state.init_dia)))
+        st.session_state.speed_input = default_rpm
+    with c4: speed = st.number_input("Spindle RPM", key="speed_input")
+    
+    if "feed_input" not in st.session_state:
+        st.session_state.feed_input = mat_data["feed"]
+    with c5: feed = st.number_input("Feed (mm/rev)", key="feed_input")
 
     if st.button("🚀 GENERATE INDUSTRIAL G-CODE"):
         res = get_machine_header(machine_type, "0101", speed, max_rpm)
@@ -290,7 +317,7 @@ with tab2:
     st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("🚀 GENERATE STEP G-CODE"):
-        res = get_machine_header(machine_type, "0202", mat_data["speed"], max_rpm)
+        res = get_machine_header(machine_type, "0202", st.session_state.get("speed_input", 1200), max_rpm)
         res.append("( OPERATION: MULTI-STEP TURNING )")
         
         doc = mat_data["doc"]
@@ -350,3 +377,4 @@ with tab4:
     with c_adv2:
         st.info("🕳 **Boring Cycle** (Coming Soon)")
         st.info("⚙️ **Tool Library Manager** (Coming Soon)")
+
