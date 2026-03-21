@@ -274,8 +274,7 @@ with tab1:
                 if current_z < 0: current_z = 0
                 res.append(f"G00 X{round(i_dia + 2, 3)} Z{round(current_z, 3)}")
                 res.append(f"G01 X-1.0 F{feed}")
-                res.append(f"G00 Z{round(current_z + 2, 3)}")
-                res.append(f"G00 X{round(i_dia + 2, 3)}")
+                res.append(f"G00 X{round(i_dia + 2, 3)} Z{round(current_z + 2, 3)} (DIAGONAL RETRACT)")
                 
         # Proper Multi-Pass Logic - Turning
         if i_dia > f_dia:
@@ -286,8 +285,7 @@ with tab1:
                 if current_dia < f_dia: current_dia = f_dia
                 res.append(f"G00 X{round(current_dia, 3)} Z2.0")
                 res.append(f"G01 Z-{round(f_len, 3)} F{feed}")
-                res.append(f"G00 X{round(current_dia + 2, 3)}") # Safely Retract X first
-                res.append(f"G00 Z2.0")
+                res.append(f"G00 X{round(current_dia + 2, 3)} Z2.0 (DIAGONAL RETRACT)")
             
         res.extend(get_machine_footer(machine_type))
         st.code("\n".join(res))
@@ -335,7 +333,7 @@ with tab2:
                 res.append(f"G00 X{round(active_dia, 3)} Z{round(current_z + 2.0, 3)}") # safe approach
                 res.append(f"G00 Z{round(current_z, 3)}") # move to pass start Z
                 res.append(f"G01 Z{round(target_z, 3)} F{feed}") # cut
-                res.append(f"G00 X{round(active_dia + 2.0, 3)}") # retract X
+                res.append(f"G00 X{round(active_dia + 2.0, 3)} Z{round(current_z + 2.0, 3)} (DIAGONAL RETRACT)")
             
             current_z = target_z # update Z for next step
             
@@ -377,4 +375,3 @@ with tab4:
     with c_adv2:
         st.info("🕳 **Boring Cycle** (Coming Soon)")
         st.info("⚙️ **Tool Library Manager** (Coming Soon)")
-
