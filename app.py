@@ -206,7 +206,8 @@ with st.sidebar:
     def update_mat_params():
         mat = st.session_state.material_select
         dia = st.session_state.get('i_dia_input', st.session_state.init_dia)
-        st.session_state.doc_input = MATERIALS[mat]["doc"]
+        st.session_state.doc_face_input = MATERIALS[mat]["doc"]
+        st.session_state.doc_turn_input = MATERIALS[mat]["doc"]
         st.session_state.feed_input = MATERIALS[mat]["feed"]
         if dia > 0:
             st.session_state.speed_input = int((MATERIALS[mat]["vc"] * 1000) / (np.pi * dia))
@@ -247,20 +248,24 @@ with tab1:
 
     st.markdown("---")
     st.subheader("⚙️ Cutting Parameters")
-    c3, c4, c5 = st.columns(3)
+    c3, c4, c5, c6 = st.columns(4)
     
-    if "doc_input" not in st.session_state:
-        st.session_state.doc_input = mat_data["doc"]
-    with c3: doc = st.number_input("Depth of Cut", key="doc_input")
+    if "doc_face_input" not in st.session_state:
+        st.session_state.doc_face_input = mat_data["doc"]
+    with c3: doc_face = st.number_input("DOC (Facing)", key="doc_face_input")
+
+    if "doc_turn_input" not in st.session_state:
+        st.session_state.doc_turn_input = mat_data["doc"]
+    with c4: doc_turn = st.number_input("DOC (Turning)", key="doc_turn_input")
     
     if "speed_input" not in st.session_state:
         default_rpm = int((mat_data["vc"] * 1000) / (np.pi * st.session_state.get('i_dia_input', st.session_state.init_dia)))
         st.session_state.speed_input = default_rpm
-    with c4: speed = st.number_input("Spindle RPM", key="speed_input")
+    with c5: speed = st.number_input("Spindle RPM", key="speed_input")
     
     if "feed_input" not in st.session_state:
         st.session_state.feed_input = mat_data["feed"]
-    with c5: feed = st.number_input("Feed (mm/rev)", key="feed_input")
+    with c6: feed = st.number_input("Feed (mm/rev)", key="feed_input")
 
     if st.button("🚀 GENERATE INDUSTRIAL G-CODE"):
         res = get_machine_header(machine_type, "0101", speed, max_rpm)
@@ -270,7 +275,7 @@ with tab1:
             res.append("( --- FACING MULTI-PASS --- )")
             current_z = i_len - f_len
             while current_z > 0:
-                current_z -= doc
+                current_z -= doc_face
                 if current_z < 0: current_z = 0
                 res.append(f"G00 X{round(i_dia + 2, 3)} Z{round(current_z, 3)}")
                 res.append(f"G01 X-1.0 F{feed}")
@@ -281,7 +286,7 @@ with tab1:
             res.append("( --- TURNING MULTI-PASS --- )")
             current_dia = i_dia
             while current_dia > f_dia:
-                current_dia -= doc
+                current_dia -= doc_turn
                 if current_dia < f_dia: current_dia = f_dia
                 res.append(f"G00 X{round(current_dia, 3)} Z2.0")
                 res.append(f"G01 Z-{round(f_len, 3)} F{feed}")
